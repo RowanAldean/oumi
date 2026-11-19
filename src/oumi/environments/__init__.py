@@ -55,6 +55,11 @@ from oumi.environments.lookup_environment import (
     LookupEnvironmentKwargs,
     ToolLookupEntry,
 )
+from oumi.environments.parallel_search_environment import (
+    ParallelSearchEnvironment,
+    ParallelSearchEnvironmentKwargs,
+    ParallelSearchProtocol,
+)
 from oumi.environments.simulated_environment import (
     SimulatedEnvironment,
     SimulatedEnvironmentKwargs,
@@ -84,6 +89,9 @@ __all__ = [
     "JsonHttpProtocol",
     "LookupEnvironment",
     "LookupEnvironmentKwargs",
+    "ParallelSearchEnvironment",
+    "ParallelSearchEnvironmentKwargs",
+    "ParallelSearchProtocol",
     "RemoteToolCall",
     "RequestsJsonClient",
     "SimulatedEnvironment",

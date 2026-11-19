@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -165,11 +166,14 @@ class RequestsJsonClient:
         url: str,
         timeout_seconds: float,
         max_retries: int = _DEFAULT_MAX_RETRIES,
+        headers: Mapping[str, str] | None = None,
     ) -> None:
         """Send every call to ``url``, waiting at most ``timeout_seconds``."""
         self._url = url
         self._timeout_seconds = timeout_seconds
         self._session = requests.Session()
+        if headers:
+            self._session.headers.update(headers)
         # urllib3 leaves POST out of allowed_methods because a resend can repeat
         # a side effect; the call's ids are what make resending safe here.
         adapter = HTTPAdapter(
