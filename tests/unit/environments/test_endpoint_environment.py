@@ -239,6 +239,32 @@ def test_json_http_protocol_sends_the_call_and_its_ids_as_one_body():
     assert result.output == {"status": "ok"}
 
 
+def test_requests_json_client_sends_configured_headers(monkeypatch):
+    sent: dict[str, object] = {}
+
+    class _Response:
+        ok = True
+
+        def json(self) -> JsonValue:
+            return {"status": "ok"}
+
+    def fake_post(self, url, *, json, timeout):
+        sent["api_key"] = self.headers.get("x-api-key")
+        return _Response()
+
+    monkeypatch.setattr(requests.Session, "post", fake_post)
+    client = RequestsJsonClient(
+        _URL,
+        timeout_seconds=5,
+        headers={"x-api-key": "configured-key"},
+    )
+
+    client.post_json({"name": "place_order"})
+    client.close()
+
+    assert sent["api_key"] == "configured-key"
+
+
 def test_from_params_posts_to_the_configured_endpoint(monkeypatch):
     sent: dict[str, object] = {}
 

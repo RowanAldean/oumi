@@ -91,17 +91,27 @@ def test_environment_is_registered_under_parallel_search():
 
 
 @pytest.mark.parametrize(
-    ("env_kwargs", "environment_key", "expected_key"),
+    ("env_kwargs", "environment_keys", "expected_key"),
     [
-        ({"api_key": "configured-key"}, None, "configured-key"),
-        (None, "environment-key", "environment-key"),
+        (
+            {"api_key": "configured-key"},
+            {"PARALLEL_API_KEY": "environment-key"},
+            "configured-key",
+        ),
+        (None, {"PARALLEL_API_KEY": "environment-key"}, "environment-key"),
+        (
+            {"api_key_env_varname": "CUSTOM_PARALLEL_KEY"},
+            {"CUSTOM_PARALLEL_KEY": "custom-key"},
+            "custom-key",
+        ),
     ],
 )
 def test_from_params_sends_search_arguments_with_api_key(
-    monkeypatch, env_kwargs, environment_key, expected_key
+    monkeypatch, env_kwargs, environment_keys, expected_key
 ):
-    if environment_key is not None:
-        monkeypatch.setenv("PARALLEL_API_KEY", environment_key)
+    monkeypatch.delenv("PARALLEL_API_KEY", raising=False)
+    for name, value in environment_keys.items():
+        monkeypatch.setenv(name, value)
     sent: dict[str, object] = {}
 
     class _Response:
@@ -160,6 +170,12 @@ def test_kwargs_reject_an_unusable_configuration(kwargs):
         kwargs.finalize_and_validate()
 
 
+def test_kwargs_repr_omits_the_api_key():
+    kwargs = ParallelSearchEnvironmentKwargs(api_key="secret-key")
+
+    assert "secret-key" not in repr(kwargs)
+
+
 class _StatusClient:
     def __init__(self, status_code: int) -> None:
         self._status_code = status_code
@@ -170,10 +186,11 @@ class _StatusClient:
         )
 
 
-def test_parallel_validation_error_is_a_tool_error():
+@pytest.mark.parametrize("status_code", [400, 422])
+def test_parallel_request_error_is_a_tool_error(status_code):
     env = ParallelSearchEnvironment(
         _params({"api_key": "unused"}),
-        ParallelSearchProtocol(_StatusClient(422)),
+        ParallelSearchProtocol(_StatusClient(status_code)),
     )
 
     with pytest.raises(ToolError):
@@ -185,10 +202,11 @@ def test_parallel_validation_error_is_a_tool_error():
         )
 
 
-def test_parallel_rate_limit_is_an_endpoint_failure():
+@pytest.mark.parametrize("status_code", [401, 403, 429])
+def test_parallel_auth_or_rate_limit_error_is_an_endpoint_failure(status_code):
     env = ParallelSearchEnvironment(
         _params({"api_key": "unused"}),
-        ParallelSearchProtocol(_StatusClient(429)),
+        ParallelSearchProtocol(_StatusClient(status_code)),
     )
 
     with pytest.raises(EndpointCallError):

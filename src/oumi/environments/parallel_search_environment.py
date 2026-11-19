@@ -17,19 +17,18 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic import JsonValue
 
-from oumi.core.configs.params.base_params import BaseParams
 from oumi.core.configs.params.environment_params import EnvironmentParams
 from oumi.core.configs.params.tool_params import ToolError
 from oumi.core.registry import register_environment
 from oumi.environments.endpoint_environment import (
     EndpointEnvironment,
+    EndpointEnvironmentKwargs,
     EndpointStatusError,
     JsonHttpClient,
-    JsonHttpProtocol,
     RemoteToolCall,
     RequestsJsonClient,
 )
@@ -37,39 +36,26 @@ from oumi.environments.utils import parse_env_kwargs
 
 _DEFAULT_ENDPOINT_URL = "https://api.parallel.ai/v1/search"
 _DEFAULT_API_KEY_ENV_VARNAME = "PARALLEL_API_KEY"
-_DEFAULT_TIMEOUT_SECONDS = 30.0
-_DEFAULT_MAX_RETRIES = 3
 
 
 @dataclass
-class ParallelSearchEnvironmentKwargs(BaseParams):
+class ParallelSearchEnvironmentKwargs(EndpointEnvironmentKwargs):
     """Type-specific kwargs for :class:`ParallelSearchEnvironment`."""
 
-    api_key: str | None = None
+    endpoint_url: str = _DEFAULT_ENDPOINT_URL
+    """Parallel Search API endpoint."""
+
+    api_key: str | None = field(default=None, repr=False)
     """Parallel API key, or ``None`` to read ``api_key_env_varname``."""
 
     api_key_env_varname: str = _DEFAULT_API_KEY_ENV_VARNAME
     """Environment variable containing the Parallel API key."""
 
-    endpoint_url: str = _DEFAULT_ENDPOINT_URL
-    """Parallel Search API endpoint."""
-
-    timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS
-    """How long to wait for one search response."""
-
-    max_retries: int = _DEFAULT_MAX_RETRIES
-    """Retries for a connection failure or retryable status."""
-
     def __finalize_and_validate__(self) -> None:
         """Validates the Parallel Search endpoint configuration."""
+        super().__finalize_and_validate__()
         if not self.api_key_env_varname:
             raise ValueError("api_key_env_varname is required.")
-        if not self.endpoint_url:
-            raise ValueError("endpoint_url is required.")
-        if self.timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be positive.")
-        if self.max_retries < 0:
-            raise ValueError("max_retries cannot be negative.")
 
     def resolve_api_key(self) -> str:
         """Returns the configured API key or reads it from the environment."""
@@ -94,14 +80,22 @@ class ParallelSearchProtocol:
         try:
             return self._http_client.post_json(request.arguments)
         except EndpointStatusError as error:
-            if JsonHttpProtocol._is_tool_refusal(error.status_code):
+            if error.status_code in (400, 422):
                 raise ToolError(str(error)) from error
             raise
 
 
 @register_environment("parallel_search")
 class ParallelSearchEnvironment(EndpointEnvironment):
-    """Environment that executes tool calls with Parallel Search."""
+    """Environment that executes tool calls with Parallel Search.
+
+    Example:
+        .. code-block:: yaml
+
+            env_type: parallel_search
+            env_kwargs:
+              api_key_env_varname: PARALLEL_API_KEY
+    """
 
     @classmethod
     def from_params(cls, params: EnvironmentParams) -> ParallelSearchEnvironment:
@@ -115,9 +109,6 @@ class ParallelSearchEnvironment(EndpointEnvironment):
             kwargs.endpoint_url,
             kwargs.timeout_seconds,
             kwargs.max_retries,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": kwargs.resolve_api_key(),
-            },
+            headers={"x-api-key": kwargs.resolve_api_key()},
         )
         return cls(params, ParallelSearchProtocol(client))
